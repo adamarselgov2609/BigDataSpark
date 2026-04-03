@@ -19,7 +19,7 @@ public class ToSnowflake {
     public static void convert() {
         Logger logger = Logger.getLogger("org.stdneprov.bigdata.lab2.ToSnowflake");
         logger.setLevel(Level.DEBUG);
-        // Создаем SparkSession
+
         SparkSession spark = SparkSession.builder()
             .appName("BigDataSpark|ToSnowflake")
             .config("spark.master", "spark://spark-master:7077")
