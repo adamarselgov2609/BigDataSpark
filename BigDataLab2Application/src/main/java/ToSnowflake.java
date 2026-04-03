@@ -26,7 +26,6 @@ public class ToSnowflake {
             .config("spark.submit.deployMode", "client")
             .getOrCreate();
 
-        // Параметры подключения к PostgreSQL
         String jdbcUrl = "jdbc:postgresql://postgres:5432/lab2";
         Properties connectionProperties = new Properties();
         connectionProperties.put("user", "stdneprov");
@@ -35,19 +34,19 @@ public class ToSnowflake {
         try (Connection conn = DriverManager.getConnection(jdbcUrl, "stdneprov", "password");
         Statement stmt = conn.createStatement()) {
 
-        // Очистка таблиц в правильном порядке (сначала зависимые, затем базовые)
+
         String[] truncateCommands = {
-            // Фактические таблицы (должны быть очищены первыми)
+
             "TRUNCATE TABLE snowflake.fact_sales RESTART IDENTITY CASCADE",
             
-            // Основные dimension таблицы
+
             "TRUNCATE TABLE snowflake.dim_customers RESTART IDENTITY CASCADE",
             "TRUNCATE TABLE snowflake.dim_sellers RESTART IDENTITY CASCADE",
             "TRUNCATE TABLE snowflake.dim_products RESTART IDENTITY CASCADE",
             "TRUNCATE TABLE snowflake.dim_stores RESTART IDENTITY CASCADE",
             "TRUNCATE TABLE snowflake.dim_pets RESTART IDENTITY CASCADE",
             
-            // Справочные таблицы
+
             "TRUNCATE TABLE snowflake.dim_suppliers RESTART IDENTITY CASCADE",
             "TRUNCATE TABLE snowflake.dim_pet_breeds RESTART IDENTITY CASCADE",
             "TRUNCATE TABLE snowflake.dim_pet_types RESTART IDENTITY CASCADE",
@@ -73,7 +72,7 @@ public class ToSnowflake {
         logger.error("Database connection error during truncate", e);
     }
 
-        // Загрузка данных из PostgreSQL
+
         Dataset<Row> mockData = spark.read()
             .jdbc(jdbcUrl, "mock_data", connectionProperties).withColumn("additional_to_id", 
                 functions.floor((functions.col("id").minus(1)).divide(1000)).multiply(1000)
@@ -87,7 +86,7 @@ public class ToSnowflake {
         
         logger.info("snowflake.dim_pet_types");
 
-        // 2. Вставка в snowflake.dim_pet_breeds (с предварительной загрузкой snowflake.dim_pet_types)
+
         Dataset<Row> petTypes = spark.read()
                 .jdbc(jdbcUrl, "snowflake.dim_pet_types", connectionProperties);
 
@@ -101,7 +100,7 @@ public class ToSnowflake {
                 .write().mode("append").jdbc(jdbcUrl, "snowflake.dim_pet_breeds", connectionProperties);
         logger.info("snowflake.dim_pet_breeds");
 
-        // 3. Вставка в snowflake.dim_pets
+
         Dataset<Row> petBreeds = spark.read()
                 .jdbc(jdbcUrl, "snowflake.dim_pet_breeds", connectionProperties);
 
@@ -122,7 +121,7 @@ public class ToSnowflake {
                 .write().mode("append").jdbc(jdbcUrl, "snowflake.dim_pets", connectionProperties);
         logger.info("snowflake.dim_pets");
 
-        // 4. Вставка в snowflake.dim_countries
+
         Dataset<Row> customerCountries = mockData.select(
                 functions.col("customer_country").alias("name"))
                 .where("customer_country IS NOT NULL");
@@ -146,7 +145,7 @@ public class ToSnowflake {
                 .write().mode("append").jdbc(jdbcUrl, "snowflake.dim_countries", connectionProperties);
         logger.info("snowflake.dim_countries");
 
-        // 5. Вставка в snowflake.dim_states
+
         mockData.select(
                 functions.col("store_state").alias("name"))
                 .where("store_state IS NOT NULL")
@@ -155,7 +154,7 @@ public class ToSnowflake {
 
         logger.info("snowflake.dim_states");
 
-        // 6. Вставка в snowflake.dim_cities
+
         Dataset<Row> storeCities = mockData.select(
                 functions.col("store_city").alias("name"))
                 .where("store_city IS NOT NULL");
@@ -171,7 +170,7 @@ public class ToSnowflake {
         
         logger.info("snowflake.dim_cities");
 
-        // 7. Вставка в snowflake.dim_customers
+
         Dataset<Row> countries = spark.read()
                 .jdbc(jdbcUrl, "snowflake.dim_countries", connectionProperties);
 
@@ -196,7 +195,7 @@ public class ToSnowflake {
 
         logger.info("snowflake.dim_customers");
 
-        // 4. snowflake.dim_sellers
+
         
         WindowSpec sellerWindow = Window.partitionBy(
                 mockData.col("sale_seller_id").plus(
@@ -217,7 +216,7 @@ public class ToSnowflake {
                         mockData.col("seller_postal_code").alias("postal_code"))
                 .write().mode("append").jdbc(jdbcUrl, "snowflake.dim_sellers", connectionProperties);
 
-        // 5. snowflake.dim_stores
+      
         Dataset<Row> states = spark.read().jdbc(jdbcUrl, "snowflake.dim_states", connectionProperties);
         Dataset<Row> cities = spark.read().jdbc(jdbcUrl, "snowflake.dim_cities", connectionProperties);
         
@@ -240,7 +239,7 @@ public class ToSnowflake {
                         mockData.col("store_email").alias("email"))
                 .write().mode("append").jdbc(jdbcUrl, "snowflake.dim_stores", connectionProperties);
 
-        // 6. snowflake.dim_products
+   
         Dataset<Row> productCategories = spark.read().jdbc(jdbcUrl, "snowflake.dim_product_categories", connectionProperties);
         Dataset<Row> petCategories = spark.read().jdbc(jdbcUrl, "snowflake.dim_pet_categories", connectionProperties);
         Dataset<Row> colors = spark.read().jdbc(jdbcUrl, "snowflake.dim_colors", connectionProperties);
@@ -282,7 +281,7 @@ public class ToSnowflake {
                         suppliers.col("supplier_id"))
                 .write().mode("append").jdbc(jdbcUrl, "snowflake.dim_products", connectionProperties);
 
-        // 7. snowflake.fact_sales
+     
         Dataset<Row> customers = spark.read().jdbc(jdbcUrl, "snowflake.dim_customers", connectionProperties);
         Dataset<Row> sellers = spark.read().jdbc(jdbcUrl, "snowflake.dim_sellers", connectionProperties);
         Dataset<Row> products = spark.read().jdbc(jdbcUrl, "snowflake.dim_products", connectionProperties);
