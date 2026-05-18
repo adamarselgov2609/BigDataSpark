@@ -1,71 +1,67 @@
 services:
   postgres:
-    image: postgres:13.3-alpine
-    restart: unless-stopped
-    ports:
-      - "5432:5432"
+    image: postgres:15
+    container_name: postgres_db
     environment:
-      POSTGRES_DB: "lab2"
-      POSTGRES_USER: "stdneprov"
-      POSTGRES_PASSWORD: "password"
-      PGDATA: "/var/lib/postgresql/data/pgdata"
+      POSTGRES_USER: spark_user
+      POSTGRES_PASSWORD: spark_password
+      POSTGRES_DB: lab_db
+    ports:
+      - "5433:5432"
     volumes:
-      - ./postgres/binary/dbdata:/var/lib/postgresql/data
-      - ./postgres/binary/dbroot:/root
-      - ./postgres/csv:/csv
-      - ./postgres/init-scripts:/docker-entrypoint-initdb.d
+      - ./scripts:/docker-entrypoint-initdb.d
+      - "./исходные данные:/data"
+    networks:
+      - spark_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spark_user -d lab_db"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse-db
     ports:
-      - "8123:8123"  
-      - "9000:9000"  
-      - "9009:9009"  
-    volumes:
-      - ./clickhouse/binary/clickhouse_data:/var/lib/clickhouse
-      - ./clickhouse/init-scripts:/docker-entrypoint-initdb.d
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: reports_db
+      CLICKHOUSE_USER: spark_user
+      CLICKHOUSE_PASSWORD: spark_password
+    networks:
+      - spark_network
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
-    environment:
-      - CLICKHOUSE_USER=stdneprov
-      - CLICKHOUSE_PASSWORD=password
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
 
-  spark-master:
-    image: bitnamilegacy/spark:latest
-    environment:
-      JDK_JAVA_OPTIONS: --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
-      SPARK_MODE: master
-    ports:
-      - "8080:8080"
-      - "7077:7077"
-      - "4040:4040"
-    volumes:
-      - "./spark-logs:/spark/logs"
-
-  spark-worker:
-    image: bitnamilegacy/spark:latest
+  spark-etl-job:
+    image: apache/spark:3.5.1
+    container_name: spark-etl-job
+    user: "0"
     depends_on:
-      - spark-master
-    environment:
-      JDK_JAVA_OPTIONS: --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
-      SPARK_MODE: worker
-      SPARK_MASTER_URL: spark://spark-master:7077
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
     volumes:
-      - "./spark-logs:/spark/logs"
-  
-  mongodb:
-    image: mongo:latest
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: stdneprov
-      MONGO_INITDB_ROOT_PASSWORD: password
-      MONGO_INITDB_DATABASE: admin
-    volumes:
-      - ./mongodb/binary/data:/data/db
-      - ./mongodb/binary/config:/data/configdb
-      - ./mongodb/init-scripts:/docker-entrypoint-initdb.d
-  
+      - .:/opt/spark-data
+    networks:
+      - spark_network
+    command:
+      - bash
+      - -c
+      - |
+        /opt/spark/bin/spark-submit --packages org.postgresql:postgresql:42.7.2,ru.yandex.clickhouse:clickhouse-jdbc:0.3.2 /opt/spark-data/spark_etl_star.py
+        /opt/spark/bin/spark-submit --packages org.postgresql:postgresql:42.7.2,ru.yandex.clickhouse:clickhouse-jdbc:0.3.2 /opt/spark-data/spark_clickhouse_reports.py
+        echo '=== ALL DONE! LAB COMPLETED SUCCESSFULLY! ==='
+
+networks:
+  spark_network:
+    driver: bridge
